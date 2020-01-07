@@ -5,7 +5,7 @@
     + C
     + Library V4L
     + Expected features:
-        * Lancement démarrage
+        * Lancement démarrage (Pour l’ajouter au démarrage, il faut éditer le fichier /etc/modules et rajouter ‘bcm2835-v4l2′)
         * Tester la com avec la caméra
         * Prendre une photo
         * Partager photo avec le client
