@@ -5,13 +5,17 @@
 #include <netinet/in.h>
 #include <strings.h>
 #include <unistd.h>
+#include <signal.h>
 
-typedef struct socketPack {
-    int socket;
-    struct sockaddr_in sin;
-} SOCKET_PACK;
+int socket_RV;
 
-SOCKET_PACK* initSocketServer(int port){
+void sigint_handler(int sig){
+    printf("Signal caught\n");
+    close(socket_RV);
+    exit(0);
+}
+
+int initSocketServer(int port, struct sockaddr_in* sinp){
     int sock_RV = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_RV == -1){
         perror("Unable to create the socket");
@@ -29,30 +33,31 @@ SOCKET_PACK* initSocketServer(int port){
         perror("Unable to listen on the socket");
         exit(1);
     }
-    SOCKET_PACK* pack = malloc(sizeof(SOCKET_PACK));
-    pack->socket = sock_RV;
-    pack->sin = sin;
-    return pack;
+    *sinp = sin;
+    return sock_RV;
 }
 
-void waitForConnection(SOCKET_PACK* packRV){
-    socklen_t length = sizeof(packRV->sin);
-    int socket = accept(packRV->socket, (struct sockaddr*) &(packRV->sin), &length);
+void waitForConnection(int socket_RV, struct sockaddr_in* sin){
+    socklen_t length = sizeof(*sin);
+    int socket = accept(socket_RV, (struct sockaddr*) sin, &length);
     printf("Connection of client\n");
     char buf[256] = "\0";
     read(socket, buf, 255*sizeof(char));
     buf[255] = '\0';
-    printf("%s is connected",buf);
+    printf("%s is connected\n",buf);
     fflush(stdin);
+    close(socket);
 }
 
 int main(int argc, char* argv[]){
+    signal(SIGINT, sigint_handler);
     if (argc != 2){
         printf("Usage ./server port\n");
         exit(1);
     }
-    SOCKET_PACK* packRV = initSocketServer(atoi(argv[1]));
+    struct sockaddr_in sin = {0};
+    socket_RV = initSocketServer(atoi(argv[1]), &sin);
     while (1){
-        waitForConnection(packRV);
+        waitForConnection(socket_RV, &sin);
     }
 }

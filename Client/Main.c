@@ -6,13 +6,17 @@
 #include <strings.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <signal.h>
 
-typedef struct socketPack {
-    int socket;
-    struct sockaddr_in sin;
-} SOCKET_PACK;
+int socket_service;
 
-SOCKET_PACK* init_socket(int port, char* address){
+void sigint_handler(int sig){
+    printf("Signal caught\n");
+    close(socket_service);
+    exit(0);
+}
+
+int init_socket(int port, char* address, struct sockaddr_in* sinp){
     int socket_service = socket(AF_INET, SOCK_STREAM, 0);
     if (socket_service == -1){
         perror("Unable to create the socket");
@@ -24,26 +28,29 @@ SOCKET_PACK* init_socket(int port, char* address){
     struct hostent* host, *gethostbyname();
     host = gethostbyname(address);
     bcopy(host->h_addr, &sin.sin_addr.s_addr,host->h_length);
-    SOCKET_PACK* socket_pack = malloc(sizeof(SOCKET_PACK));
-    socket_pack->socket = socket_service;
-    socket_pack->sin = sin;
-    return socket_pack;
+    *sinp = sin;
+    return socket_service;
 }
 
 int main(int argc, char* argv[]){
+    signal(SIGINT, sigint_handler);
     if (argc != 3){
         printf("Usage: ./client address port");
         exit(1);
     }
-    SOCKET_PACK* pack = init_socket(atoi(argv[2]), argv[1]);
-    if (connect(pack->socket,(struct sockaddr*) &(pack->sin), sizeof(pack->sin)) != 0){
+    struct sockaddr_in sin = {0};
+    socket_service = init_socket(atoi(argv[2]), argv[1], &sin);
+    if (connect(socket_service,(struct sockaddr*) &(sin), sizeof(sin)) != 0){
         printf("Cannot connect to server\n");
         exit(1);
     }
     char buf[256] = "\0";
+    printf("Type your name to send it to the server\n");
     fgets(buf, 256*sizeof(char), stdin);
-    printf("%s\n",buf);
+    for (int i=0;i<256;i++){
+        if (buf[i] == '\n')buf[i] = '\0';
+    }
     buf[255] = '\0';
-    write(pack->socket, buf, 256*sizeof(char));
+    write(socket_service, buf, 256*sizeof(char));
     exit(0);
 }
