@@ -358,8 +358,8 @@ int main()
     }
 
     //return 1 if errors occured
-    if(print_caps(fd))
-        return 1;
+    //if(print_caps(fd))
+      //  return 1;
 
     mmapInit(fd);
 
