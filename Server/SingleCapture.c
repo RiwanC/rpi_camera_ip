@@ -1,4 +1,3 @@
-
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/videodev2.h>
@@ -7,6 +6,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <libv4l2.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -14,7 +14,7 @@
 
 
 
-#define CLEAR(x) memset (&(x), 0, sizeof (x))
+#define CLEAR(x) memset(&(x), 0, sizeof (x))
 
 // minimum number of buffers to request in VIDIOC_REQBUFS call
 #define VIDIOC_REQBUFS_COUNT 2
@@ -85,7 +85,106 @@ static int xioctl(int fd, int request, void *arg)
 }
 
 
+static void deviceInit(int fd)
+{
+	struct v4l2_capability cap;
+	struct v4l2_cropcap cropcap;
+	struct v4l2_crop crop;
+	struct v4l2_format fmt;
+	struct v4l2_streamparm frameint;
+	unsigned int min;
 
+	if (-1 == xioctl(fd, VIDIOC_QUERYCAP, &cap)) {
+		if (EINVAL == errno) {
+			fprintf(stderr, "%s is no V4L2 device\n",deviceName);
+			exit(EXIT_FAILURE);
+		} else {
+			errno_exit("VIDIOC_QUERYCAP");
+		}
+	}
+
+	if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
+		fprintf(stderr, "%s is no video capture device\n",deviceName);
+		exit(EXIT_FAILURE);
+	}
+
+
+		if (!(cap.capabilities & V4L2_CAP_STREAMING)) {
+		fprintf(stderr, "%s does not support streaming i/o\n",deviceName);
+		exit(EXIT_FAILURE);}
+
+
+	/* Select video input, video standard and tune here. */
+	CLEAR(cropcap);
+
+	cropcap.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+	if (0 == xioctl(fd, VIDIOC_CROPCAP, &cropcap)) {
+		crop.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		crop.c = cropcap.defrect; /* reset to default */
+
+		if (-1 == xioctl(fd, VIDIOC_S_CROP, &crop)) {
+			switch (errno) {
+				case EINVAL:
+					/* Cropping not supported. */
+					break;
+				default:
+					/* Errors ignored. */
+					break;
+			}
+		}
+	} else {
+		/* Errors ignored. */
+	}
+
+	CLEAR(fmt);
+
+	// v4l2_format
+	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	fmt.fmt.pix.width = width;
+	fmt.fmt.pix.height = height;
+	fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
+	fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
+
+	if (-1 == xioctl(fd, VIDIOC_S_FMT, &fmt))
+		errno_exit("VIDIOC_S_FMT");
+
+	if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUV420) {
+		fprintf(stderr,"Libv4l didn't accept YUV420 format. Can't proceed.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	/* Note VIDIOC_S_FMT may change width and height. */
+	if (width != fmt.fmt.pix.width) {
+		width = fmt.fmt.pix.width;
+		fprintf(stderr,"Image width set to %i by device %s.\n", width, deviceName);
+	}
+
+	if (height != fmt.fmt.pix.height) {
+		height = fmt.fmt.pix.height;
+		fprintf(stderr,"Image height set to %i by device %s.\n", height, deviceName);
+	}
+	
+  /* If the user has set the fps to -1, don't try to set the frame interval */
+
+    CLEAR(frameint);
+    
+    /* Attempt to set the frame interval. */
+    frameint.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    frameint.parm.capture.timeperframe.numerator = 1;
+    frameint.parm.capture.timeperframe.denominator = 30;
+    if (-1 == xioctl(fd, VIDIOC_S_PARM, &frameint))
+      fprintf(stderr,"Unable to set frame interval.\n");
+  
+
+	/* Buggy driver paranoia. */
+	min = fmt.fmt.pix.width * 2;
+	if (fmt.fmt.pix.bytesperline < min)
+		fmt.fmt.pix.bytesperline = min;
+	min = fmt.fmt.pix.bytesperline * fmt.fmt.pix.height;
+	if (fmt.fmt.pix.sizeimage < min)
+		fmt.fmt.pix.sizeimage = min;
+}
 
 
 static void jpegWrite(unsigned char* img, char* jpegFilename)
@@ -347,6 +446,20 @@ static void mmapInit(int fd)
 int main()
 {
 
+	struct stat st;
+
+	// stat file
+	if (-1 == stat(deviceName, &st)) {
+		fprintf(stderr, "Cannot identify '%s': %d, %s\n", deviceName, errno, strerror(errno));
+		exit(EXIT_FAILURE);
+	}
+
+	// check if its device
+	if (!S_ISCHR(st.st_mode)) {
+		fprintf(stderr, "%s is no device\n", deviceName);
+		exit(EXIT_FAILURE);
+	}
+
     //open the capture device. Default capture device is /dev/video0
     int fd = v4l2_open(deviceName, O_RDWR /* required */ | O_NONBLOCK, 0);
 /*    fd = open("/dev/video0", O_RDWR);*/
@@ -356,11 +469,12 @@ int main()
         perror("Pb opening video device");
         return 1;
     }
-
+    deviceInit(fd);
     //return 1 if errors occured
     //if(print_caps(fd))
       //  return 1;
 
+    
     mmapInit(fd);
 
 
