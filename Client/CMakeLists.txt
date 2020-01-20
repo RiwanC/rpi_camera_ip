@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 
 #nom du projet
-project(rpi_camera_ip)
+project(rpi_camera_ip_client)
 
 #ajout executable server
-add_executable(main_server Server/Main.c)
+add_executable(main_server ../Server/Main.c)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
@@ -13,5 +13,5 @@ link_directories(${GTK3_LIBRARY_DIRS})
 add_definitions(${GTK3_CFLAGS_OTHER})
 
 #ajout executable client
-add_executable(main_client Client/ihm.c)
+add_executable(main_client ihm.c)
 target_link_libraries(main_client ${GTK3_LIBRARIES})
