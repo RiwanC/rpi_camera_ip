@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <jpeglib.h>
 
+#include "libCamera.h"
 
 
 #define CLEAR(x) memset(&(x), 0, sizeof (x))
@@ -30,10 +31,7 @@ struct buffer *         buffers         = NULL;
 
 
 static char* deviceName = "/dev/video0";
-static unsigned int width = 640;
-static unsigned int height = 480;
 static unsigned char jpegQuality = 120;
-
 
 
 /* Fonction from yuv.c */
@@ -61,17 +59,6 @@ void YUV420toYUV444(int width, int height, unsigned char* src, unsigned char* ds
     }
 }
 
-
-
-static void errno_exit(const char* s)
-{
-    fprintf(stderr, "%s error %d, %s\n", s, errno, strerror(errno));
-    exit(EXIT_FAILURE);
-}
-
-
-
-
 //check if the capture is available or not
 static int xioctl(int fd, int request, void *arg)
 {
@@ -85,7 +72,7 @@ static int xioctl(int fd, int request, void *arg)
 }
 
 
-static void deviceInit(int fd)
+static void deviceInit(CAMERA* myCam)
 {
 	struct v4l2_capability cap;
 	struct v4l2_cropcap cropcap;
@@ -94,24 +81,26 @@ static void deviceInit(int fd)
 	struct v4l2_streamparm frameint;
 	unsigned int min;
 
-	if (-1 == xioctl(fd, VIDIOC_QUERYCAP, &cap)) {
+	if (-1 == xioctl(myCam->fd, VIDIOC_QUERYCAP, &cap)) {
 		if (EINVAL == errno) {
 			fprintf(stderr, "%s is no V4L2 device\n",deviceName);
-			exit(EXIT_FAILURE);
+			myCam->status = -1;
 		} else {
-			errno_exit("VIDIOC_QUERYCAP");
-		}
+            fprintf(stderr, "%s error %d, %s\n", "VIDIOC_QUERYCAP", errno, strerror(errno));
+            myCam->status = -1;
+        }
 	}
 
 	if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
 		fprintf(stderr, "%s is no video capture device\n",deviceName);
-		exit(EXIT_FAILURE);
+		myCam->status = -1;
 	}
 
 
 		if (!(cap.capabilities & V4L2_CAP_STREAMING)) {
-		fprintf(stderr, "%s does not support streaming i/o\n",deviceName);
-		exit(EXIT_FAILURE);}
+            fprintf(stderr, "%s does not support streaming i/o\n", deviceName);
+            myCam->status = -1;
+        }
 
 
 	/* Select video input, video standard and tune here. */
@@ -119,23 +108,10 @@ static void deviceInit(int fd)
 
 	cropcap.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-	if (0 == xioctl(fd, VIDIOC_CROPCAP, &cropcap)) {
-		crop.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-		crop.c = cropcap.defrect; /* reset to default */
-
-		if (-1 == xioctl(fd, VIDIOC_S_CROP, &crop)) {
-			switch (errno) {
-				case EINVAL:
-					/* Cropping not supported. */
-					break;
-				default:
-					/* Errors ignored. */
-					break;
-			}
-		}
-	} else {
-		/* Errors ignored. */
-	}
+	xioctl(myCam->fd, VIDIOC_CROPCAP, &cropcap);
+    crop.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    crop.c = cropcap.defrect; /* reset to default */
+    xioctl(myCam->fd, VIDIOC_S_CROP, &crop);
 
 	CLEAR(fmt);
 
@@ -146,36 +122,36 @@ static void deviceInit(int fd)
 	fmt.fmt.pix.field = V4L2_FIELD_INTERLACED;
 	fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
 
-	if (-1 == xioctl(fd, VIDIOC_S_FMT, &fmt))
-		errno_exit("VIDIOC_S_FMT");
-
-	if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUV420) {
-		fprintf(stderr,"Libv4l didn't accept YUV420 format. Can't proceed.\n");
-		exit(EXIT_FAILURE);
-	}
+	if (-1 == xioctl(myCam->fd, VIDIOC_S_FMT, &fmt))
+	    fprintf(stderr, "%s error %d, %s\n", "VIDIOC_S_FMT", errno, strerror(errno));
+        myCam->status = -1;
+        if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUV420) {
+            fprintf(stderr,"Libv4l didn't accept YUV420 format. Can't proceed.\n");
+            myCam->status = -1;
+        }
 
 	/* Note VIDIOC_S_FMT may change width and height. */
 	if (width != fmt.fmt.pix.width) {
 		width = fmt.fmt.pix.width;
 		fprintf(stderr,"Image width set to %i by device %s.\n", width, deviceName);
+		myCam->status = -1;
 	}
 
 	if (height != fmt.fmt.pix.height) {
 		height = fmt.fmt.pix.height;
 		fprintf(stderr,"Image height set to %i by device %s.\n", height, deviceName);
+		myCam->status = -1;
 	}
-	
-  /* If the user has set the fps to -1, don't try to set the frame interval */
 
     CLEAR(frameint);
-    
-    /* Attempt to set the frame interval. */
+
     frameint.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     frameint.parm.capture.timeperframe.numerator = 1;
     frameint.parm.capture.timeperframe.denominator = 30;
-    if (-1 == xioctl(fd, VIDIOC_S_PARM, &frameint))
-      fprintf(stderr,"Unable to set frame interval.\n");
-  
+    if (-1 == xioctl(myCam->fd, VIDIOC_S_PARM, &frameint)) {
+        fprintf(stderr, "Unable to set frame interval.\n");
+        myCam->status = -1;
+    }
 
 	/* Buggy driver paranoia. */
 	min = fmt.fmt.pix.width * 2;
@@ -197,7 +173,7 @@ static void jpegWrite(unsigned char* img, char* jpegFilename)
 
     // try to open file for saving
     if (!outfile) {
-        errno_exit("jpeg");
+        fprintf(stderr, "%s error %d, %s\n", "jpeg", errno, strerror(errno));
     }
 
     // create jpeg data
@@ -240,7 +216,7 @@ static void jpegWrite(unsigned char* img, char* jpegFilename)
 
 
 //capture image
-int capture_image(int fd)
+void capture_image(CAMERA* myCam)
 {
     unsigned char* src;
     unsigned char* dst = malloc(width*height*3*sizeof(char));
@@ -250,36 +226,36 @@ int capture_image(int fd)
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
     buf.index = 0;
-    if(-1 == xioctl(fd, VIDIOC_QBUF, &buf))
+    if(-1 == xioctl(myCam->fd, VIDIOC_QBUF, &buf))
     {
         perror("Pb querying Buffer");
-        return 1;
+        myCam->status = -1;
     }
 
 
     //After querying the buffer, the only thing left is capturing the frame and saving it in the buffer.
-    if(-1 == xioctl(fd, VIDIOC_STREAMON, &buf.type))
+    if(-1 == xioctl(myCam->fd, VIDIOC_STREAMON, &buf.type))
     {
         perror("Pb starting Capture");
-        return 1;
+        myCam->status = -1;
     }
 
     fd_set fds;
     FD_ZERO(&fds);
-    FD_SET(fd, &fds);
+    FD_SET(myCam->fd, &fds);
     struct timeval tv = {0};
     tv.tv_sec = 2;
-    int r = select(fd+1, &fds, NULL, NULL, &tv);
+    int r = select(myCam->fd+1, &fds, NULL, NULL, &tv);
     if(-1 == r)
     {
         perror("Waiting for Frame");
-        return 1;
+        myCam->status = -1;
     }
 
-    if(-1 == xioctl(fd, VIDIOC_DQBUF, &buf))
+    if(-1 == xioctl(myCam->fd, VIDIOC_DQBUF, &buf))
     {
         perror("Pb retrieving Frame");
-        return 1;
+        myCam->status = -1;
     }
 
     //store data - YUV420
@@ -290,12 +266,11 @@ int capture_image(int fd)
     //store data - YUV440 / JPEG
     src = (unsigned char*) buffers[0].start;
 
-
-    YUV420toYUV444(width, height, src, dst);
-
-    jpegWrite(dst, "image.jpg");
-
-    return 0;
+    if (myCam->status != -1){
+        YUV420toYUV444(width, height, src, dst);
+        myCam->lastImage = dst;
+    }
+    //jpegWrite(dst, "image.jpg");
 }
 
 
@@ -385,7 +360,7 @@ int print_caps(int fd)
 
 
 
-static void mmapInit(int fd)
+static void mmapInit(CAMERA* myCam)
 {
     struct v4l2_requestbuffers req;
 
@@ -395,25 +370,26 @@ static void mmapInit(int fd)
     req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     req.memory = V4L2_MEMORY_MMAP;
 
-    if (-1 == xioctl(fd, VIDIOC_REQBUFS, &req)) {
+    if (-1 == xioctl(myCam->fd, VIDIOC_REQBUFS, &req)) {
         if (EINVAL == errno) {
             fprintf(stderr, "%s does not support memory mapping\n", deviceName);
-            exit(EXIT_FAILURE);
+            myCam->status = -1;
         } else {
-            errno_exit("VIDIOC_REQBUFS");
+            fprintf(stderr, "%s error %d, %s\n", "VIDIOC_REQBUFS", errno, strerror(errno));
+            myCam->status = -1;
         }
     }
 
     if (req.count < 2) {
         fprintf(stderr, "Insufficient buffer memory on %s\n", deviceName);
-        exit(EXIT_FAILURE);
+        myCam->status = -1;
     }
 
     buffers = calloc(req.count, sizeof(*buffers));
 
     if (!buffers) {
         fprintf(stderr, "Out of memory\n");
-        exit(EXIT_FAILURE);
+        myCam->status = -1;
     }
 
     for (n_buffers = 0; n_buffers < req.count; ++n_buffers) {
@@ -425,63 +401,44 @@ static void mmapInit(int fd)
         buf.memory = V4L2_MEMORY_MMAP;
         buf.index = n_buffers;
 
-        if (-1 == xioctl(fd, VIDIOC_QUERYBUF, &buf))
-            errno_exit("VIDIOC_QUERYBUF");
+        if (-1 == xioctl(myCam->fd, VIDIOC_QUERYBUF, &buf)) {
+            fprintf(stderr, "%s error %d, %s\n", "VIDIOC_QUERYBUF", errno, strerror(errno));
+            myCam->status = -1;
+        }
 
         buffers[n_buffers].length = buf.length;
-        buffers[n_buffers].start = v4l2_mmap(NULL /* start anywhere */, buf.length, PROT_READ | PROT_WRITE /* required */, MAP_SHARED /* recommended */, fd, buf.m.offset);
+        buffers[n_buffers].start = v4l2_mmap(NULL /* start anywhere */, buf.length,
+                                             PROT_READ | PROT_WRITE /* required */, MAP_SHARED /* recommended */, myCam->fd,
+                                             buf.m.offset);
         printf("Length: %d\nAddress: %p\n", buf.length, buffers);
         printf("Image Length: %d\n", buf.bytesused);
 
 
-        if (MAP_FAILED == buffers[n_buffers].start)
-            errno_exit("mmap");
+        if (MAP_FAILED == buffers[n_buffers].start){
+            fprintf(stderr, "%s error %d, %s\n", "mmap", errno, strerror(errno));
+            myCam->status = -1;
+        }
     }
 }
 
+void initCamera(CAMERA* myCam){
+    struct stat st;
+    myCam->status = 0;
 
-
-
-
-int main()
-{
-
-	struct stat st;
-
-	// stat file
-	if (-1 == stat(deviceName, &st)) {
-		fprintf(stderr, "Cannot identify '%s': %d, %s\n", deviceName, errno, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	// check if its device
-	if (!S_ISCHR(st.st_mode)) {
-		fprintf(stderr, "%s is no device\n", deviceName);
-		exit(EXIT_FAILURE);
-	}
-
-    //open the capture device. Default capture device is /dev/video0
-    int fd = v4l2_open(deviceName, O_RDWR /* required */ | O_NONBLOCK, 0);
-/*    fd = open("/dev/video0", O_RDWR);*/
-    if (fd == -1)
-    {
-        //could not find capture device
-        perror("Pb opening video device");
-        return 1;
+    if (-1 == stat(deviceName, &st)) {
+        fprintf(stderr, "Cannot identify '%s': %d, %s\n", deviceName, errno, strerror(errno));
+        myCam->status = -1;
     }
-    deviceInit(fd);
-    //return 1 if errors occured
-    //if(print_caps(fd))
-      //  return 1;
-
-    
-    mmapInit(fd);
-
-
-    if(capture_image(fd))
-        return 1;
-
-    //close the capture device
-    close(fd);
-    return 0;
+    if (!S_ISCHR(st.st_mode)) {
+        fprintf(stderr, "%s is no device\n", deviceName);
+        myCam->status = -1;
+    }
+    myCam->fd = v4l2_open(deviceName, O_RDWR /* required */ | O_NONBLOCK, 0);
+    if (myCam->fd == -1)
+    {
+        perror("Pb opening video device");
+        myCam->status = -1;
+    }
+    deviceInit(myCam);
+    mmapInit(myCam);
 }

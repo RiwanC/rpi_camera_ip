@@ -6,8 +6,19 @@
 #include <strings.h>
 #include <unistd.h>
 #include <signal.h>
+#include <pthread.h>
+
+#include "libCamera.h"
+
+#define SNAPSHOT 0
+#define CLOSE 1
+
+typedef struct threadarg{
+    int socket;
+} THREAD_ARG;
 
 int socket_RV;
+CAMERA myCam = {0};
 
 void sigint_handler(int sig){
     printf("Signal caught\n");
@@ -37,16 +48,44 @@ int initSocketServer(int port, struct sockaddr_in* sinp){
     return sock_RV;
 }
 
+void* clientRoutine(void* arg){
+    THREAD_ARG* threadArg = (THREAD_ARG*) arg;
+    int command;
+    while (1){
+        printf("Waiting for order\n");
+        command = -1;
+        read(threadArg->socket, &command, sizeof(int));
+        switch (command){
+            case SNAPSHOT:
+                printf("Received snapshot order\n");
+                capture_image(&myCam);
+                printf("Image taken with status %d\n", myCam.status);
+                write(threadArg->socket, &myCam.status, sizeof(int));
+                if (myCam.status == 1){
+                    write(threadArg->socket, myCam.lastImage, sizeof(char)*width*height*3);
+                }
+                break;
+            case CLOSE:
+                break;
+        }
+    }
+    return NULL;
+}
+
+void sendStatus(int socket){
+    write(socket, &(myCam.status), sizeof(int));
+
+}
+
 void waitForConnection(int socket_RV, struct sockaddr_in* sin){
     socklen_t length = sizeof(*sin);
+    pthread_t clientThread;
+    THREAD_ARG threadArg;
     int socket = accept(socket_RV, (struct sockaddr*) sin, &length);
     printf("Connection of client\n");
-    char buf[256] = "\0";
-    read(socket, buf, 255*sizeof(char));
-    buf[255] = '\0';
-    printf("%s is connected\n",buf);
-    fflush(stdin);
-    close(socket);
+    threadArg.socket = socket;
+    sendStatus(socket);
+    pthread_create(&clientThread, NULL, clientRoutine, (void*) &threadArg);
 }
 
 int main(int argc, char* argv[]){
@@ -55,6 +94,8 @@ int main(int argc, char* argv[]){
         printf("Usage ./server port\n");
         exit(1);
     }
+    initCamera(&myCam);
+    printf("Camera status: %d\n", myCam.status);
     struct sockaddr_in sin = {0};
     socket_RV = initSocketServer(atoi(argv[1]), &sin);
     while (1){

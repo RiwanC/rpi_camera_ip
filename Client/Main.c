@@ -4,16 +4,69 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <strings.h>
+#include <string.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <jpeglib.h>
 #include <signal.h>
+#include <errno.h>
 
 int socket_service;
+static unsigned int width = 640;
+static unsigned int height = 480;
 
 void sigint_handler(int sig){
     printf("Signal caught\n");
     close(socket_service);
     exit(0);
+}
+
+static void jpegWrite(unsigned char* img, char* jpegFilename)
+{
+    struct jpeg_compress_struct cinfo;
+    struct jpeg_error_mgr jerr;
+
+    JSAMPROW row_pointer[1];
+    FILE *outfile = fopen( jpegFilename, "wb" );
+
+    // try to open file for saving
+    if (!outfile) {
+        fprintf(stderr, "%s error %d, %s\n", "jpeg", errno, strerror(errno));
+    }
+
+    // create jpeg data
+    cinfo.err = jpeg_std_error( &jerr );
+    jpeg_create_compress(&cinfo);
+    jpeg_stdio_dest(&cinfo, outfile);
+
+    // set image parameters
+    cinfo.image_width = width;
+    cinfo.image_height = height;
+    cinfo.input_components = 3;
+    cinfo.in_color_space = JCS_YCbCr;
+
+    // set jpeg compression parameters to default
+    jpeg_set_defaults(&cinfo);
+    // and then adjust quality setting
+    jpeg_set_quality(&cinfo, 120, TRUE);
+
+    // start compress
+    jpeg_start_compress(&cinfo, TRUE);
+
+    // feed data
+    while (cinfo.next_scanline < cinfo.image_height) {
+        row_pointer[0] = &img[cinfo.next_scanline * cinfo.image_width *  cinfo.input_components];
+        jpeg_write_scanlines(&cinfo, row_pointer, 1);
+    }
+
+    // finish compression
+    jpeg_finish_compress(&cinfo);
+
+    // destroy jpeg data
+    jpeg_destroy_compress(&cinfo);
+
+    // close output file
+    fclose(outfile);
 }
 
 int init_socket(int port, char* address, struct sockaddr_in* sinp){
@@ -44,13 +97,18 @@ int main(int argc, char* argv[]){
         printf("Cannot connect to server\n");
         exit(1);
     }
-    char buf[256] = "\0";
-    printf("Type your name to send it to the server\n");
-    fgets(buf, 256*sizeof(char), stdin);
-    for (int i=0;i<256;i++){
-        if (buf[i] == '\n')buf[i] = '\0';
+    int status = -42;
+    read(socket_service, &status, sizeof(int));
+    printf("Camera status: %d\n", status);
+    int command = 0;
+    write(socket_service, &command, sizeof(int));
+    printf("Sending snapshot order\n");
+    read(socket_service, &status, sizeof(int));
+    printf("Camera status: %d\n", status);
+    unsigned char* image = malloc(sizeof(char)*height*width*3);
+    if (status != -1){
+        read(socket_service, image, sizeof(char)*height*width*3);
+        jpegWrite(image, "image2.jpg");
     }
-    buf[255] = '\0';
-    write(socket_service, buf, 256*sizeof(char));
     exit(0);
 }
