@@ -92,7 +92,7 @@ int open_dialog(char * name_file)
     }
 }
 
-void takePicutre(GtkWidget *widget, gpointer data)
+void takePicture(GtkWidget *widget, gpointer data)
 {
     printf("\nTake picture\n");
     updateInfo((GtkLabel*) data, TAKE, NULL);

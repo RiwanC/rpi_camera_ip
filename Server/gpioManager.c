@@ -1,5 +1,3 @@
-/*  Created by Kévin Bedin the 14/01/2020   */
-
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
