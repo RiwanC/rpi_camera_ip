@@ -14,7 +14,7 @@ https://developer.gnome.org/gtk3/stable/
 #include <string.h>
 
 #define OK 1
-#define KO 0
+#define KO 0 
 
 #define TAKE 1
 #define SAVE 2
