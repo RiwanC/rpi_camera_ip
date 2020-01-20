@@ -3,9 +3,6 @@ cmake_minimum_required(VERSION 3.10)
 #nom du projet
 project(rpi_camera_ip_client)
 
-#ajout executable server
-add_executable(main_server ../Server/Main.c)
-
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 include_directories(${GTK3_INCLUDE_DIRS})
