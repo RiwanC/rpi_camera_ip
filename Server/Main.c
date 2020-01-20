@@ -13,6 +13,7 @@
 #define SNAPSHOT 0
 #define CLOSE 1
 
+
 typedef struct threadarg{
     int socket;
 } THREAD_ARG;
@@ -61,8 +62,8 @@ void* clientRoutine(void* arg){
                 capture_image(&myCam);
                 printf("Image taken with status %d\n", myCam.status);
                 write(threadArg->socket, &myCam.status, sizeof(int));
-                if (myCam.status == 1){
-                    write(threadArg->socket, myCam.lastImage, sizeof(char)*width*height*3);
+                if (myCam.status == 0){
+                    send(threadArg->socket, myCam.lastImage, sizeof(char)*width*height*3,0);
                 }
                 break;
             case CLOSE:

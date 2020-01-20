@@ -1,3 +1,8 @@
+// To compile:
+//      
+//          gcc Main.c -o client -ljpeg
+//
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -21,7 +26,7 @@ void sigint_handler(int sig){
     exit(0);
 }
 
-static void jpegWrite(unsigned char* img, char* jpegFilename)
+void jpegWrite(unsigned char* img, char* jpegFilename)
 {
     struct jpeg_compress_struct cinfo;
     struct jpeg_error_mgr jerr;
@@ -107,8 +112,10 @@ int main(int argc, char* argv[]){
     printf("Camera status: %d\n", status);
     unsigned char* image = malloc(sizeof(char)*height*width*3);
     if (status != -1){
-        read(socket_service, image, sizeof(char)*height*width*3);
+        // MSG_WAITALL should block until all data has been received. From the manual page on recv.
+        int a= recv(socket_service, image, sizeof(char)*height*width*3,MSG_WAITALL);
         jpegWrite(image, "image2.jpg");
     }
+    free(image);
     exit(0);
 }

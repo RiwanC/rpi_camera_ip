@@ -123,12 +123,15 @@ static void deviceInit(CAMERA* myCam)
 	fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
 
 	if (-1 == xioctl(myCam->fd, VIDIOC_S_FMT, &fmt))
+    {
 	    fprintf(stderr, "%s error %d, %s\n", "VIDIOC_S_FMT", errno, strerror(errno));
         myCam->status = -1;
-        if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUV420) {
-            fprintf(stderr,"Libv4l didn't accept YUV420 format. Can't proceed.\n");
-            myCam->status = -1;
-        }
+    }
+
+    if (fmt.fmt.pix.pixelformat != V4L2_PIX_FMT_YUV420) {
+        fprintf(stderr,"Libv4l didn't accept YUV420 format. Can't proceed.\n");
+        myCam->status = -1;
+    }
 
 	/* Note VIDIOC_S_FMT may change width and height. */
 	if (width != fmt.fmt.pix.width) {
@@ -163,7 +166,7 @@ static void deviceInit(CAMERA* myCam)
 }
 
 
-static void jpegWrite(unsigned char* img, char* jpegFilename)
+void jpegWrite(unsigned char* img, char* jpegFilename)
 {
     struct jpeg_compress_struct cinfo;
     struct jpeg_error_mgr jerr;
