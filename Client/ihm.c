@@ -136,7 +136,7 @@ int ihm(int argc, char *argv [])
 
 
     /* g_build_filename(): get the path for the file according to the OS */
-    filename =  g_build_filename("../IHM.glade", NULL);
+    filename =  g_build_filename("IHM.glade", NULL);
 
     /* Loading of the "ihm.glade" file */
     gtk_builder_add_from_file(builder, filename, &error);
