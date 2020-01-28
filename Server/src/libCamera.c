@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <jpeglib.h>
 
-#include "libCamera.h"
+#include "../include/libCamera.h"
 
 
 #define CLEAR(x) memset(&(x), 0, sizeof (x))

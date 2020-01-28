@@ -1,7 +1,7 @@
 ## **Tutoriel CMake pour la cross-compilation pour rpi sous docker**
 
 - Récupération de l'image Docker:
-~~~
+~~~shell script
 $ docker pull pblottiere/embsys-rpi3-buildroot-video
 ~~~
 - Création du conteneur:
@@ -10,7 +10,7 @@ $ docker run -it pblottiere/embsys-rpi3-buildroot-video /bin/bash
 ~~~
 
 - Génération de l'éxécutable
-~~~
+~~~shell script
 docker$ cd /root
 docker$ tar zxvf buildroot-precompiled-2017.08.tar.gz
 docker$ git clone https://github.com/KevinBdn/rpi_camera_ip.git

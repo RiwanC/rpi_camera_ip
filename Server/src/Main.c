@@ -6,7 +6,7 @@
 #include <signal.h>
 #include <pthread.h>
 
-#include "libCamera.h"
+#include "../include/libCamera.h"
 
 #define SNAPSHOT 0
 #define CLOSE 1

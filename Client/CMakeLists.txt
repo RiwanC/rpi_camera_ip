@@ -10,5 +10,7 @@ link_directories(${GTK3_LIBRARY_DIRS})
 add_definitions(${GTK3_CFLAGS_OTHER})
 
 #ajout executable client
-add_executable(main_client ihm.c)
-target_link_libraries(main_client ${GTK3_LIBRARIES})
+add_executable(client src/ihm.c)
+target_link_libraries(client ${GTK3_LIBRARIES})
+set_target_properties(client PROPERTIES RUNTIME_OUTPUT_DIRECTORY "../bin")
+
